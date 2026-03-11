@@ -1,0 +1,261 @@
+{
+  "uid": "fishtank-iot",
+  "title": "Fish Tank IoT Dashboard",
+  "tags": ["iot", "fishtank"],
+  "timezone": "utc",
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "alarm_source",
+        "label": "Alarm Source",
+        "type": "custom",
+        "query": "Rule-Based,AI Analysis,Both",
+        "current": { "text": "Both", "value": "Both" },
+        "options": [
+          { "text": "Rule-Based", "value": "Rule-Based", "selected": false },
+          { "text": "AI Analysis", "value": "AI Analysis", "selected": false },
+          { "text": "Both", "value": "Both", "selected": true }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+        "enable": true,
+        "name": "Rule-Based Alarms",
+        "iconColor": "red",
+        "target": {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, device_id || ': ' || description AS text, alarm_level AS tags FROM alarms WHERE $__timeFilter(timestamp) AND ('${alarm_source}' IN ('Rule-Based', 'Both')) ORDER BY timestamp",
+          "format": "table",
+          "refId": "AnnoAlarms"
+        }
+      },
+      {
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+        "enable": true,
+        "name": "AI Analyses",
+        "iconColor": "blue",
+        "target": {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, device_id || ': [AI ' || adjusted_severity || '] ' || summary AS text, adjusted_severity AS tags FROM alarm_analyses WHERE $__timeFilter(timestamp) AND ('${alarm_source}' IN ('AI Analysis', 'Both')) ORDER BY timestamp",
+          "format": "table",
+          "refId": "AnnoAI"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Temperature (temp-01)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS temperature FROM telemetry WHERE device_id = 'temp-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "pH (ph-01)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS ph FROM telemetry WHERE device_id = 'ph-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Water Level (level-01)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS level FROM telemetry WHERE device_id = 'level-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Dissolved Oxygen (oxygen-01)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS oxygen FROM telemetry WHERE device_id = 'oxygen-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Turbidity (turbidity-01)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS turbidity FROM telemetry WHERE device_id = 'turbidity-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "lineInterpolation": "smooth" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Actuator States",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS feeder FROM telemetry WHERE device_id = 'feeder-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS time, value AS light FROM telemetry WHERE device_id = 'light-01' AND $__timeFilter(timestamp) ORDER BY timestamp",
+          "format": "time_series",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "lineInterpolation": "stepAfter" },
+          "min": -0.1,
+          "max": 1.1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Rule-Based Alarms",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS \"Time\", device_id AS \"Device\", alarm_level AS \"Level\", value AS \"Value\", threshold AS \"Threshold\", description AS \"Description\" FROM alarms WHERE $__timeFilter(timestamp) AND ('${alarm_source}' IN ('Rule-Based', 'Both')) ORDER BY timestamp DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Level" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "HH": { "text": "HH", "color": "dark-red" }, "LL": { "text": "LL", "color": "dark-red" }, "H": { "text": "H", "color": "dark-yellow" }, "L": { "text": "L", "color": "dark-yellow" } } }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "title": "AI Alarm Analyses",
+      "type": "table",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-telemetry" },
+          "rawSql": "SELECT timestamp AS \"Time\", device_id AS \"Device\", alarm_level AS \"Alarm\", adjusted_severity AS \"AI Severity\", root_cause AS \"Root Cause\", summary AS \"AI Summary\", recommended_actions AS \"Actions\" FROM alarm_analyses WHERE $__timeFilter(timestamp) AND ('${alarm_source}' IN ('AI Analysis', 'Both')) ORDER BY timestamp DESC LIMIT 50",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "AI Severity" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "CRITICAL": { "text": "CRITICAL", "color": "dark-red" }, "WARNING": { "text": "WARNING", "color": "dark-yellow" }, "INFO": { "text": "INFO", "color": "dark-green" } } }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 3
+}
