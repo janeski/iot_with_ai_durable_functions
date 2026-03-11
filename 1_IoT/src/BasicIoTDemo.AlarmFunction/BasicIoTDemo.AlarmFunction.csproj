@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-BasicIoTDemo.AlarmFunction-2d0e34fe-0156-453f-aeff-42394c0b5036</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="13.1.2" />
+    <PackageReference Include="Aspire.Npgsql" Version="13.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BasicIoTDemo.ServiceDefaults\BasicIoTDemo.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\BasicIoTDemo.Shared\BasicIoTDemo.Shared.csproj" />
+  </ItemGroup>
+</Project>
