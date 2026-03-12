@@ -51,6 +51,10 @@ var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
     .WaitFor(postgresServer)
     .ExcludeFromManifest();
 
+builder.AddDevTunnel("grafana-tunnel")
+    .WithReference(grafana)
+    .WithAnonymousAccess();
+
 // Services
 builder.AddProject<Projects.IoT_AI_Demo_TelemetryFunction>("telemetry-function")
     .WithReference(telemetrydb)
