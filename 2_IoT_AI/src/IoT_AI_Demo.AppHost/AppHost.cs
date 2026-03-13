@@ -53,7 +53,8 @@ var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
 
 builder.AddDevTunnel("grafana-tunnel")
     .WithReference(grafana)
-    .WithAnonymousAccess();
+    .WithAnonymousAccess()
+    .ExcludeFromManifest();
 
 // Services
 builder.AddProject<Projects.IoT_AI_Demo_TelemetryFunction>("telemetry-function")
