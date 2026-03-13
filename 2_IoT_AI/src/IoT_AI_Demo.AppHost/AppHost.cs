@@ -34,7 +34,7 @@ var pgEndpoint = postgresServer.GetEndpoint("tcp");
 
 var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
     .WithEndpoint(targetPort: 3000, port: 61364, name: "http", scheme: "http")
-    .WithEnvironment("GF_SERVER_ROOT_URL", "%(protocol)s://%(domain)s:%(http_port)s/")
+    .WithEnvironment("GF_SERVER_ROOT_URL", "http://localhost:61364/")
     .WithEnvironment("GF_AUTH_ANONYMOUS_ENABLED", "true")
     .WithEnvironment("GF_AUTH_ANONYMOUS_ORG_ROLE", "Admin")
     .WithEnvironment("GF_AUTH_DISABLE_LOGIN_FORM", "true")
