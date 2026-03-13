@@ -51,10 +51,17 @@ var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
     .WaitFor(postgresServer)
     .ExcludeFromManifest();
 
-builder.AddDevTunnel("grafana-tunnel")
-    .WithReference(grafana)
-    .WithAnonymousAccess()
-    .ExcludeFromManifest();
+var enableGrafanaTunnel = string.Equals(
+    Environment.GetEnvironmentVariable("ENABLE_GRAFANA_TUNNEL"),
+    "true",
+    StringComparison.OrdinalIgnoreCase);
+
+if (enableGrafanaTunnel)
+{
+    builder.AddDevTunnel("grafana-tunnel")
+        .WithReference(grafana)
+        .ExcludeFromManifest();
+}
 
 // Services
 builder.AddProject<Projects.IoT_AI_Demo_TelemetryFunction>("telemetry-function")
