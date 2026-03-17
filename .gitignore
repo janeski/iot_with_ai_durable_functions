@@ -416,3 +416,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+1_IoT/docs/*
+2_IoT_AI/docs/*
+.gitignore
