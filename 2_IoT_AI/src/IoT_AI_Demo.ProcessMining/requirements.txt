@@ -1,0 +1,8 @@
+pm4py==2.7.11
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+opentelemetry-proto==1.27.0
+pandas==2.2.3
+numpy==1.26.4
+scipy==1.13.1
+pydantic-settings==2.6.0

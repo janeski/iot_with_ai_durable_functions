@@ -5,6 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
@@ -80,11 +81,41 @@ public static class Extensions
 
     private static TBuilder AddOpenTelemetryExporters<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
-        var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+        var aspireEndpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        var processMiningEndpoint = builder.Configuration["PROCESS_MINING_OTLP_ENDPOINT"];
+        var hasAspire = !string.IsNullOrWhiteSpace(aspireEndpoint);
+        var hasPm = !string.IsNullOrWhiteSpace(processMiningEndpoint);
 
-        if (useOtlpExporter)
+        if (hasAspire && hasPm)
+        {
+            // UseOtlpExporter() (cross-cutting) and signal-specific AddOtlpExporter() cannot
+            // coexist on the same IServiceCollection. When both endpoints are present, register
+            // the Aspire Dashboard endpoint via signal-specific exporters alongside the process
+            // mining exporter.
+            builder.Services.AddOpenTelemetry()
+                .WithTracing(t => t
+                    .AddOtlpExporter(o => o.Endpoint = new Uri(aspireEndpoint!))
+                    .AddOtlpExporter(o =>
+                    {
+                        o.Endpoint = new Uri($"{processMiningEndpoint}/v1/traces");
+                        o.Protocol = OtlpExportProtocol.HttpProtobuf;
+                    }))
+                .WithMetrics(m => m
+                    .AddOtlpExporter(o => o.Endpoint = new Uri(aspireEndpoint!)));
+        }
+        else if (hasAspire)
         {
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
+        }
+        else if (hasPm)
+        {
+            builder.Services.AddOpenTelemetry()
+                .WithTracing(t => t
+                    .AddOtlpExporter(o =>
+                    {
+                        o.Endpoint = new Uri($"{processMiningEndpoint}/v1/traces");
+                        o.Protocol = OtlpExportProtocol.HttpProtobuf;
+                    }));
         }
 
         // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.AspNetCore package)
