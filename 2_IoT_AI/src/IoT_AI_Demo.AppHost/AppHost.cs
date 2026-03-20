@@ -51,9 +51,9 @@ var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
     .WaitFor(postgresServer)
     .ExcludeFromManifest();
 
-var enableGrafanaTunnel = string.Equals(
+var enableGrafanaTunnel = !string.Equals(
     Environment.GetEnvironmentVariable("ENABLE_GRAFANA_TUNNEL"),
-    "true",
+    "false",
     StringComparison.OrdinalIgnoreCase);
 
 if (enableGrafanaTunnel)

@@ -14,6 +14,9 @@ Endpoints:
 """
 
 import os
+import time
+import hashlib
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query, Request, Response
@@ -25,6 +28,26 @@ from .config import settings
 from .span_store import ensure_schema, get_stats, ingest_export_request
 from .event_log import build_event_log, get_distinct_values
 from .mining import conformance, discovery, export, performance, variants
+
+# Simple in-memory cache: key → (result, timestamp)
+_cache: dict = {}
+_CACHE_TTL = 30  # seconds
+
+
+def _cache_key(**kwargs) -> str:
+    return hashlib.md5(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()
+
+
+def _cached(key: str):
+    entry = _cache.get(key)
+    if entry and (time.monotonic() - entry[1]) < _CACHE_TTL:
+        return entry[0]
+    return None
+
+
+def _store(key: str, value):
+    _cache[key] = (value, time.monotonic())
+    return value
 
 
 @asynccontextmanager
@@ -101,10 +124,14 @@ def api_discovery(
     to_ts: str | None = Query(None),
     noise_threshold: float = Query(0.2, ge=0.0, le=0.9),
 ):
+    key = _cache_key(ep="discovery", device_id=device_id, alarm_level=alarm_level,
+                     from_ts=from_ts, to_ts=to_ts, noise_threshold=noise_threshold)
+    if (hit := _cached(key)) is not None:
+        return hit
     log = _get_log(device_id, alarm_level, from_ts, to_ts)
     if log is None:
         return {"error": "insufficient_data", "message": "Need at least 3 complete cases to discover a process model."}
-    return discovery.discover(log, noise_threshold)
+    return _store(key, discovery.discover(log, noise_threshold))
 
 
 @app.get("/api/conformance")
@@ -115,11 +142,15 @@ def api_conformance(
     to_ts: str | None = Query(None),
     noise_threshold: float = Query(0.2, ge=0.0, le=0.9),
 ):
+    key = _cache_key(ep="conformance", device_id=device_id, alarm_level=alarm_level,
+                     from_ts=from_ts, to_ts=to_ts, noise_threshold=noise_threshold)
+    if (hit := _cached(key)) is not None:
+        return hit
     log = _get_log(device_id, alarm_level, from_ts, to_ts)
     if log is None:
         return {"error": "insufficient_data", "message": "Need at least 3 complete cases."}
     net, im, fm = discovery.get_net(log, noise_threshold)
-    return conformance.check(log, net, im, fm)
+    return _store(key, conformance.check(log, net, im, fm))
 
 
 @app.get("/api/performance")
@@ -129,10 +160,14 @@ def api_performance(
     from_ts: str | None = Query(None),
     to_ts: str | None = Query(None),
 ):
+    key = _cache_key(ep="performance", device_id=device_id, alarm_level=alarm_level,
+                     from_ts=from_ts, to_ts=to_ts)
+    if (hit := _cached(key)) is not None:
+        return hit
     log = _get_log(device_id, alarm_level, from_ts, to_ts)
     if log is None:
         return {"error": "insufficient_data", "message": "Need at least 3 complete cases."}
-    return performance.analyze(log)
+    return _store(key, performance.analyze(log))
 
 
 @app.get("/api/variants")
@@ -143,10 +178,14 @@ def api_variants(
     to_ts: str | None = Query(None),
     top_n: int = Query(10, ge=1, le=50),
 ):
+    key = _cache_key(ep="variants", device_id=device_id, alarm_level=alarm_level,
+                     from_ts=from_ts, to_ts=to_ts, top_n=top_n)
+    if (hit := _cached(key)) is not None:
+        return hit
     log = _get_log(device_id, alarm_level, from_ts, to_ts)
     if log is None:
         return {"error": "insufficient_data", "message": "Need at least 3 complete cases."}
-    return variants.analyze(log, top_n)
+    return _store(key, variants.analyze(log, top_n))
 
 
 @app.get("/api/export/xes")

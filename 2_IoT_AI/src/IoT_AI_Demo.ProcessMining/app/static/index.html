@@ -242,6 +242,10 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'discovery')   loadDiscovery();
+  if (name === 'conformance') loadConformance();
+  if (name === 'performance') loadPerformance();
+  if (name === 'variants')    loadVariants();
 }
 
 async function refresh() {
@@ -306,6 +310,9 @@ async function loadDiscovery() {
 }
 
 async function loadConformance() {
+  document.getElementById('fitness-gauge').textContent = '—';
+  document.getElementById('fitness-meta').textContent = '';
+  document.getElementById('conformance-table').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Running token replay...</p></div>';
   try {
     const d = await fetch(BASE + '/api/conformance' + qs()).then(r => r.json());
     if (d.error) {
@@ -348,6 +355,9 @@ async function loadConformance() {
 }
 
 async function loadPerformance() {
+  document.getElementById('sojourn-chart').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Analyzing sojourn times...</p></div>';
+  document.getElementById('throughput-chart').innerHTML = '';
+  document.getElementById('throughput-stats').textContent = '';
   try {
     const d = await fetch(BASE + '/api/performance' + qs()).then(r => r.json());
     if (d.error) return;
@@ -387,6 +397,8 @@ async function loadPerformance() {
 }
 
 async function loadVariants() {
+  document.getElementById('variants-table').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Analyzing variants...</p></div>';
+  document.getElementById('dfg-chart').innerHTML = '';
   try {
     const d = await fetch(BASE + '/api/variants' + qs()).then(r => r.json());
     if (d.error) {
