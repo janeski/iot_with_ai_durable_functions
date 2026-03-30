@@ -423,3 +423,5 @@ FodyWeavers.xsd
 
 # Process mining runtime data
 **/process-mining-data/
+Articles/
+Draft/

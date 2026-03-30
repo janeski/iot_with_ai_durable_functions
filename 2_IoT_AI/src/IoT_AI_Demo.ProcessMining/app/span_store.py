@@ -4,14 +4,13 @@ Receives raw OTLP spans and persists them. Only spans from the
 'IoT_AI_Demo.Orchestrator' instrumentation scope are tracked for process mining.
 All others are accepted (returns 200) but not stored.
 
-Idempotent: INSERT OR IGNORE on span_id ensures Durable Functions replays
-don't produce duplicate events in the event log.
+Each span is stored as a distinct event. Durable Functions replays produce
+new span_ids and are intentionally kept — they represent rework in the process.
 """
 
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Optional
 
 from .config import settings
 
@@ -132,7 +131,7 @@ def ingest_export_request(req) -> int:
         return 0
 
     sql = """
-        INSERT OR IGNORE INTO spans
+        INSERT INTO spans
             (span_id, trace_id, parent_span_id,
              service_name, scope_name, span_name,
              start_ns, end_ns,
