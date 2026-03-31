@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using IoT_AI_Demo.Shared;
 using Microsoft.Azure.Functions.Worker;
@@ -12,14 +13,19 @@ public sealed class Activities(
     AlarmEmbeddingService embeddingService,
     ILogger<Activities> logger)
 {
+    private static readonly ActivitySource Source = new("IoT_AI_Demo.Orchestrator");
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     // ── Step 1: Fetch recent telemetry ──────────────────────────────────
 
     [Function(nameof(FetchRecentTelemetry))]
     public async Task<List<TelemetryMessage>> FetchRecentTelemetry(
-        [ActivityTrigger] string deviceId)
+        [ActivityTrigger] DeviceActivityInput input)
     {
+        using var span = Source.StartActivity("FetchRecentTelemetry");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.DeviceId);
+
         const string sql = """
             SELECT device_id, device_type, timestamp, value, unit
             FROM telemetry
@@ -30,7 +36,7 @@ public sealed class Activities(
 
         var results = new List<TelemetryMessage>();
         await using var cmd = db.CreateCommand(sql);
-        cmd.Parameters.AddWithValue(deviceId);
+        cmd.Parameters.AddWithValue(input.DeviceId);
         cmd.Parameters.AddWithValue(DateTimeOffset.UtcNow.AddMinutes(-10));
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -44,7 +50,8 @@ public sealed class Activities(
                 reader.GetString(4)));
         }
 
-        logger.LogInformation("Fetched {Count} telemetry records for {DeviceId}", results.Count, deviceId);
+        span?.SetTag("telemetry.count", results.Count);
+        logger.LogInformation("Fetched {Count} telemetry records for {DeviceId}", results.Count, input.DeviceId);
         return results;
     }
 
@@ -52,12 +59,17 @@ public sealed class Activities(
 
     [Function(nameof(FetchDeviceContext))]
     public Task<DeviceContext> FetchDeviceContext(
-        [ActivityTrigger] string deviceId)
+        [ActivityTrigger] DeviceActivityInput input)
     {
-        var sensor = DeviceDefinitions.Sensors.FirstOrDefault(s => s.DeviceId == deviceId);
-        if (sensor is null)
-            return Task.FromResult(new DeviceContext(deviceId, "Unknown", "", 0, 0, null, null));
+        using var span = Source.StartActivity("FetchDeviceContext");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.DeviceId);
 
+        var sensor = DeviceDefinitions.Sensors.FirstOrDefault(s => s.DeviceId == input.DeviceId);
+        if (sensor is null)
+            return Task.FromResult(new DeviceContext(input.DeviceId, "Unknown", "", 0, 0, null, null));
+
+        span?.SetTag("device.type", sensor.DeviceType);
         return Task.FromResult(new DeviceContext(
             sensor.DeviceId,
             sensor.DeviceType,
@@ -72,18 +84,26 @@ public sealed class Activities(
 
     [Function(nameof(SearchSimilarAlarms))]
     public async Task<List<SimilarAlarmResult>> SearchSimilarAlarms(
-        [ActivityTrigger] AlarmMessage alarm)
+        [ActivityTrigger] AlarmActivityInput input)
     {
+        using var span = Source.StartActivity("SearchSimilarAlarms");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+        span?.SetTag("alarm.level", input.Alarm.AlarmLevel.ToString());
+
         try
         {
             await embeddingService.EnsureSchemaAsync();
-            var text = AlarmEmbeddingService.BuildAlarmText(alarm);
+            var text = AlarmEmbeddingService.BuildAlarmText(input.Alarm);
             var embedding = await embeddingService.GenerateEmbeddingAsync(text);
-            return await embeddingService.SearchSimilarAsync(embedding);
+            var results = await embeddingService.SearchSimilarAsync(embedding);
+            span?.SetTag("rag.similar_count", results.Count);
+            return results;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Similar alarm search failed for {DeviceId} — continuing without RAG context", alarm.DeviceId);
+            span?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            logger.LogWarning(ex, "Similar alarm search failed for {DeviceId} — continuing without RAG context", input.Alarm.DeviceId);
             return [];
         }
     }
@@ -94,13 +114,24 @@ public sealed class Activities(
     public async Task<AiAnalysisResult?> CallAiAnalysis(
         [ActivityTrigger] AiAnalysisInput input)
     {
+        using var span = Source.StartActivity("CallAiAnalysis");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+        span?.SetTag("alarm.level", input.Alarm.AlarmLevel.ToString());
+        span?.SetTag("rag.similar_alarms", input.SimilarAlarms?.Count ?? 0);
+
         try
         {
-            return await aiAnalyzer.AnalyzeAsync(
+            var result = await aiAnalyzer.AnalyzeAsync(
                 input.Alarm, input.RecentTelemetry, input.DeviceContext, input.SimilarAlarms);
+            span?.SetTag("ai.available", true);
+            span?.SetTag("ai.adjusted_severity", result?.AdjustedSeverity);
+            return result;
         }
         catch (Exception ex)
         {
+            span?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            span?.SetTag("ai.available", false);
             logger.LogError(ex, "AI analysis failed for {DeviceId}", input.Alarm.DeviceId);
             return null;
         }
@@ -112,6 +143,8 @@ public sealed class Activities(
     public Task<AiAnalysisResult> ValidateResult(
         [ActivityTrigger] AiAnalysisResult result)
     {
+        using var span = Source.StartActivity("ValidateResult");
+        span?.SetTag("orchestration.instance_id", result.OrchestrationId);
         var validSeverities = new[] { "CRITICAL", "WARNING", "INFO" };
 
         if (string.IsNullOrWhiteSpace(result.RootCause) ||
@@ -119,6 +152,7 @@ public sealed class Activities(
             !validSeverities.Contains(result.AdjustedSeverity))
         {
             logger.LogWarning("AI result validation failed — adjusting fields");
+            span?.SetTag("validation.adjusted", true);
             return Task.FromResult(result with
             {
                 AdjustedSeverity = validSeverities.Contains(result.AdjustedSeverity)
@@ -130,6 +164,7 @@ public sealed class Activities(
             });
         }
 
+        span?.SetTag("validation.adjusted", false);
         logger.LogInformation("AI result validated successfully");
         return Task.FromResult(result);
     }
@@ -139,6 +174,11 @@ public sealed class Activities(
     [Function(nameof(UpdatePostgreSql))]
     public async Task UpdatePostgreSql([ActivityTrigger] ActionInput input)
     {
+        using var span = Source.StartActivity("UpdatePostgreSql");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+        span?.SetTag("alarm.adjusted_severity", input.Analysis.AdjustedSeverity);
+
         await EnsureAnalysisTableAsync();
 
         const string sql = """
@@ -166,6 +206,10 @@ public sealed class Activities(
     [Function(nameof(NotifyViaSendGrid))]
     public Task NotifyViaSendGrid([ActivityTrigger] ActionInput input)
     {
+        using var span = Source.StartActivity("NotifyViaSendGrid");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+
         // Stub — in production, send enriched email via SendGrid
         logger.LogInformation(
             "[SendGrid Stub] Would notify for {DeviceId}: {Summary}",
@@ -178,6 +222,11 @@ public sealed class Activities(
     [Function(nameof(CreateMaintenanceTicket))]
     public Task CreateMaintenanceTicket([ActivityTrigger] ActionInput input)
     {
+        using var span = Source.StartActivity("CreateMaintenanceTicket");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+        span?.SetTag("alarm.adjusted_severity", input.Analysis.AdjustedSeverity);
+
         // Stub — in production, call external API to create work order
         if (input.Analysis.AdjustedSeverity == "CRITICAL")
         {
@@ -193,6 +242,10 @@ public sealed class Activities(
     [Function(nameof(UpdateDashboard))]
     public Task UpdateDashboard([ActivityTrigger] ActionInput input)
     {
+        using var span = Source.StartActivity("UpdateDashboard");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+
         // The alarm analysis is already persisted to PostgreSQL by UpdatePostgreSql.
         // Grafana picks it up automatically on refresh.
         // In production, this could update a device twin or push to a real-time cache.
@@ -207,6 +260,10 @@ public sealed class Activities(
     [Function(nameof(StoreAlarmEmbedding))]
     public async Task StoreAlarmEmbedding([ActivityTrigger] ActionInput input)
     {
+        using var span = Source.StartActivity("StoreAlarmEmbedding");
+        span?.SetTag("orchestration.instance_id", input.OrchestrationId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+
         try
         {
             await embeddingService.EnsureSchemaAsync();
@@ -216,6 +273,7 @@ public sealed class Activities(
         }
         catch (Exception ex)
         {
+            span?.SetStatus(ActivityStatusCode.Error, ex.Message);
             logger.LogWarning(ex, "Failed to store alarm embedding for {DeviceId} — non-critical", input.Alarm.DeviceId);
         }
     }

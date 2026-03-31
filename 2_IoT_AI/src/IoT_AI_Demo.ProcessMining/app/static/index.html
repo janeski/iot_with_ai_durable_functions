@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>IoT Process Mining</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3d;
+      --accent: #7c6ffc;
+      --accent2: #4ecdc4;
+      --text: #e2e4f0;
+      --muted: #6b7280;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #22c55e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header .badge { background: var(--accent); color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+    #status-bar { margin-left: auto; display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--muted); }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 4px; }
+    #status-dot.ready { background: var(--success); }
+
+    .filters {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .filters label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+    .filters select, .filters input[type=text] {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 4px; padding: 4px 8px; font-size: 12px; height: 28px;
+    }
+    .filters button {
+      background: var(--accent); color: #fff; border: none; border-radius: 4px;
+      padding: 4px 14px; font-size: 12px; cursor: pointer; height: 28px;
+    }
+    .filters button:hover { filter: brightness(1.15); }
+    .filters .export-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      margin-left: auto;
+    }
+
+    .tabs { display: flex; gap: 0; padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .tab { padding: 10px 18px; cursor: pointer; border-bottom: 2px solid transparent; font-size: 13px; color: var(--muted); }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+    .tab-content { display: none; padding: 20px; }
+    .tab-content.active { display: block; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    .card-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; font-weight: 600; }
+
+    /* Process map */
+    #process-map-svg { width: 100%; overflow: auto; min-height: 300px; }
+    #process-map-svg svg { max-width: 100%; height: auto; }
+
+    .waiting {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 200px; color: var(--muted); gap: 8px;
+    }
+    .waiting .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Model stats chips */
+    .stat-chips { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+    .chip { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; }
+    .chip span { color: var(--accent); font-weight: 700; margin-right: 4px; }
+
+    /* Conformance */
+    .fitness-gauge { font-size: 48px; font-weight: 700; text-align: center; padding: 20px 0; }
+    .fitness-gauge.high { color: var(--success); }
+    .fitness-gauge.mid  { color: var(--warning); }
+    .fitness-gauge.low  { color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 6px 8px; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 600; }
+    td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: rgba(124,111,252,0.06); }
+    .fit-yes { color: var(--success); font-weight: 600; }
+    .fit-no  { color: var(--danger);  font-weight: 600; }
+
+    /* Variants */
+    .variant-row { cursor: pointer; transition: background 0.1s; }
+    .variant-row:hover { background: rgba(124,111,252,0.08); }
+    .seq-pill {
+      display: inline-block; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 5px; margin: 1px 2px; font-size: 11px; white-space: nowrap;
+    }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+    .noise-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .noise-row input[type=range] { flex: 1; }
+    .noise-row span { min-width: 32px; text-align: right; color: var(--accent); font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="badge">pm4py</div>
+  <h1>IoT Alarm Analysis — Process Mining</h1>
+  <div id="status-bar">
+    <div><span id="status-dot"></span><span id="status-text">connecting...</span></div>
+    <div id="case-count">—</div>
+    <div id="span-count">—</div>
+  </div>
+</header>
+
+<div class="filters">
+  <label>Device</label>
+  <select id="filter-device"><option value="">All devices</option></select>
+
+  <label>Alarm level</label>
+  <select id="filter-level"><option value="">All levels</option></select>
+
+  <label>From</label>
+  <input type="text" id="filter-from" placeholder="2025-01-01T00:00:00Z" style="width:180px"/>
+
+  <label>To</label>
+  <input type="text" id="filter-to" placeholder="now" style="width:180px"/>
+
+  <button onclick="refresh()">Refresh</button>
+  <button class="export-btn" onclick="downloadXES()">Download XES</button>
+  <button class="export-btn" onclick="downloadBPMN()">Download BPMN</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('discovery')">Process Map</div>
+  <div class="tab" onclick="switchTab('conformance')">Conformance</div>
+  <div class="tab" onclick="switchTab('performance')">Performance</div>
+  <div class="tab" onclick="switchTab('variants')">Variants</div>
+</div>
+
+<!-- DISCOVERY TAB -->
+<div id="tab-discovery" class="tab-content active">
+  <div class="card">
+    <div class="card-title">IMf Petri Net — Discovered Process Model</div>
+    <div class="noise-row">
+      <label>Noise threshold</label>
+      <input type="range" id="noise-slider" min="0" max="0.5" step="0.05" value="0.2"
+             oninput="document.getElementById('noise-val').textContent=this.value"/>
+      <span id="noise-val">0.2</span>
+    </div>
+    <div id="process-map-svg"><div class="waiting"><div class="spinner"></div><p>Waiting for trace data...</p></div></div>
+    <div class="stat-chips" id="model-stats"></div>
+  </div>
+</div>
+
+<!-- CONFORMANCE TAB -->
+<div id="tab-conformance" class="tab-content">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Aggregate Fitness</div>
+      <div class="fitness-gauge" id="fitness-gauge">—</div>
+      <div style="text-align:center;color:var(--muted);font-size:12px;" id="fitness-meta"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Fitness Distribution</div>
+      <div id="fitness-chart" style="height:180px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Per-Case Token Replay Results</div>
+    <div id="conformance-table"></div>
+  </div>
+</div>
+
+<!-- PERFORMANCE TAB -->
+<div id="tab-performance" class="tab-content">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Activity Sojourn Times (mean ms)</div>
+      <div id="sojourn-chart" style="height:320px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Case Throughput Time Distribution</div>
+      <div id="throughput-chart" style="height:200px"></div>
+      <div id="throughput-stats" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
+<!-- VARIANTS TAB -->
+<div id="tab-variants" class="tab-content">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Top Execution Variants</div>
+      <div id="variants-table"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Directly-Follows Graph (top 20 edges)</div>
+      <div id="dfg-chart" style="height:320px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+let currentTab = 'discovery';
+const plotlyLayout = {
+  paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+  font: { color: '#e2e4f0', size: 11 },
+  margin: { t: 10, r: 10, b: 40, l: 10 },
+};
+
+function qs(extra) {
+  const p = new URLSearchParams();
+  const dev = document.getElementById('filter-device').value;
+  const lvl = document.getElementById('filter-level').value;
+  const from = document.getElementById('filter-from').value.trim();
+  const to   = document.getElementById('filter-to').value.trim();
+  if (dev)  p.set('device_id', dev);
+  if (lvl)  p.set('alarm_level', lvl);
+  if (from) p.set('from_ts', from);
+  if (to)   p.set('to_ts', to);
+  const noise = document.getElementById('noise-slider').value;
+  p.set('noise_threshold', noise);
+  if (extra) Object.entries(extra).forEach(([k,v]) => p.set(k,v));
+  return p.toString() ? '?' + p.toString() : '';
+}
+
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'discovery')   loadDiscovery();
+  if (name === 'conformance') loadConformance();
+  if (name === 'performance') loadPerformance();
+  if (name === 'variants')    loadVariants();
+}
+
+async function refresh() {
+  updateStatus();
+  if (currentTab === 'discovery')   loadDiscovery();
+  if (currentTab === 'conformance') loadConformance();
+  if (currentTab === 'performance') loadPerformance();
+  if (currentTab === 'variants')    loadVariants();
+}
+
+async function updateStatus() {
+  try {
+    const s = await fetch(BASE + '/api/status').then(r => r.json());
+    const dot = document.getElementById('status-dot');
+    document.getElementById('status-text').textContent = s.ready ? 'Ready' : `Need ${s.min_cases_required - s.total_cases} more cases`;
+    dot.className = s.ready ? 'ready' : '';
+    document.getElementById('case-count').textContent = s.total_cases + ' cases';
+    document.getElementById('span-count').textContent = s.total_spans + ' spans';
+  } catch(e) {}
+}
+
+async function loadFilters() {
+  try {
+    const f = await fetch(BASE + '/api/filters').then(r => r.json());
+    const devSel = document.getElementById('filter-device');
+    f.devices.forEach(d => {
+      const o = document.createElement('option'); o.value = d; o.textContent = d;
+      devSel.appendChild(o);
+    });
+    const lvlSel = document.getElementById('filter-level');
+    f.alarm_levels.forEach(l => {
+      const o = document.createElement('option'); o.value = l; o.textContent = l;
+      lvlSel.appendChild(o);
+    });
+  } catch(e) {}
+}
+
+async function loadDiscovery() {
+  const el = document.getElementById('process-map-svg');
+  el.innerHTML = '<div class="waiting"><div class="spinner"></div><p>Discovering process model...</p></div>';
+  document.getElementById('model-stats').innerHTML = '';
+  try {
+    const d = await fetch(BASE + '/api/discovery' + qs()).then(r => r.json());
+    if (d.error) {
+      el.innerHTML = `<div class="waiting"><p>${d.message}</p></div>`;
+      return;
+    }
+    el.innerHTML = d.svg;
+    // Force SVG to scale
+    const svg = el.querySelector('svg');
+    if (svg) { svg.style.maxWidth = '100%'; svg.style.height = 'auto'; }
+
+    document.getElementById('model-stats').innerHTML = `
+      <div class="chip"><span>${d.transitions}</span> activities</div>
+      <div class="chip"><span>${d.places}</span> places</div>
+      <div class="chip"><span>${d.silent_transitions}</span> silent transitions</div>
+      <div class="chip"><span>${d.noise_threshold}</span> noise threshold</div>
+    `;
+  } catch(e) {
+    el.innerHTML = '<div class="waiting"><p>Error loading process model.</p></div>';
+  }
+}
+
+async function loadConformance() {
+  document.getElementById('fitness-gauge').textContent = '—';
+  document.getElementById('fitness-meta').textContent = '';
+  document.getElementById('conformance-table').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Running token replay...</p></div>';
+  try {
+    const d = await fetch(BASE + '/api/conformance' + qs()).then(r => r.json());
+    if (d.error) {
+      document.getElementById('fitness-gauge').textContent = '—';
+      document.getElementById('conformance-table').innerHTML = `<p style="color:var(--muted)">${d.message}</p>`;
+      return;
+    }
+    const pct = (d.average_fitness * 100).toFixed(1) + '%';
+    const cls = d.average_fitness >= 0.8 ? 'high' : d.average_fitness >= 0.5 ? 'mid' : 'low';
+    document.getElementById('fitness-gauge').textContent = pct;
+    document.getElementById('fitness-gauge').className = 'fitness-gauge ' + cls;
+    document.getElementById('fitness-meta').textContent =
+      `${d.fit_cases} / ${d.total_cases} cases fit (≥80%)`;
+
+    // Distribution chart
+    const fitBuckets = [0,0,0,0,0]; // 0-20,20-40,40-60,60-80,80-100
+    d.per_case.forEach(c => {
+      const i = Math.min(4, Math.floor(c.fitness * 5));
+      fitBuckets[i]++;
+    });
+    Plotly.newPlot('fitness-chart', [{
+      x: ['0-20%','20-40%','40-60%','60-80%','80-100%'],
+      y: fitBuckets, type: 'bar',
+      marker: { color: ['#ef4444','#ef4444','#f59e0b','#f59e0b','#22c55e'] }
+    }], {...plotlyLayout, xaxis:{color:'#6b7280'}, yaxis:{color:'#6b7280'}});
+
+    // Table
+    let html = '<table><thead><tr><th>Case ID</th><th>Fitness</th><th>Missing tokens</th><th>Remaining tokens</th><th>Fit?</th></tr></thead><tbody>';
+    d.per_case.forEach(c => {
+      const fitCls = c.is_fit ? 'fit-yes' : 'fit-no';
+      html += `<tr><td style="font-size:11px;color:var(--muted)">${c.case_id.substring(0,20)}...</td>
+        <td>${(c.fitness*100).toFixed(1)}%</td>
+        <td>${c.missing_tokens}</td>
+        <td>${c.remaining_tokens}</td>
+        <td class="${fitCls}">${c.is_fit ? '✓' : '✗'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('conformance-table').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+async function loadPerformance() {
+  document.getElementById('sojourn-chart').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Analyzing sojourn times...</p></div>';
+  document.getElementById('throughput-chart').innerHTML = '';
+  document.getElementById('throughput-stats').textContent = '';
+  try {
+    const d = await fetch(BASE + '/api/performance' + qs()).then(r => r.json());
+    if (d.error) return;
+
+    // Sojourn chart — horizontal bar
+    const acts = d.activities || [];
+    Plotly.newPlot('sojourn-chart', [{
+      y: acts.map(a => a.activity),
+      x: acts.map(a => a.mean_ms),
+      type: 'bar', orientation: 'h',
+      marker: { color: '#7c6ffc' },
+      text: acts.map(a => a.mean_ms + ' ms'),
+      textposition: 'outside',
+    }], {
+      ...plotlyLayout,
+      margin: { t: 10, r: 80, b: 40, l: 160 },
+      xaxis: { title: 'Mean sojourn time (ms)', color: '#6b7280' },
+      yaxis: { color: '#6b7280', automargin: true },
+    });
+
+    // Throughput histogram
+    const hist = d.throughput.histogram || [];
+    Plotly.newPlot('throughput-chart', [{
+      x: hist.map(b => b.bin_start),
+      y: hist.map(b => b.count),
+      type: 'bar', marker: { color: '#4ecdc4' },
+    }], {
+      ...plotlyLayout,
+      xaxis: { title: 'Case duration (ms)', color: '#6b7280' },
+      yaxis: { title: 'Cases', color: '#6b7280' },
+    });
+
+    const t = d.throughput;
+    document.getElementById('throughput-stats').innerHTML =
+      `Mean: <b>${t.mean_ms}ms</b> &nbsp; Median: <b>${t.median_ms}ms</b> &nbsp; p95: <b>${t.p95_ms}ms</b> &nbsp; (${t.case_count} cases)`;
+  } catch(e) { console.error(e); }
+}
+
+async function loadVariants() {
+  document.getElementById('variants-table').innerHTML = '<div class="waiting"><div class="spinner"></div><p>Analyzing variants...</p></div>';
+  document.getElementById('dfg-chart').innerHTML = '';
+  try {
+    const d = await fetch(BASE + '/api/variants' + qs()).then(r => r.json());
+    if (d.error) {
+      document.getElementById('variants-table').innerHTML = `<p style="color:var(--muted)">${d.message}</p>`;
+      return;
+    }
+
+    // Variants table
+    let html = `<p style="color:var(--muted);margin-bottom:8px">${d.total_variants} unique variant(s)</p>`;
+    html += '<table><thead><tr><th>#</th><th>Activity sequence</th><th>Cases</th></tr></thead><tbody>';
+    d.top_variants.forEach((v, i) => {
+      const pills = v.sequence.map(a => `<span class="seq-pill">${a}</span>`).join(' →\u200B ');
+      html += `<tr class="variant-row"><td>${i+1}</td><td style="max-width:600px">${pills}</td><td>${v.case_count}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('variants-table').innerHTML = html;
+
+    // DFG chart
+    const dfg = (d.dfg || []).slice(0, 20);
+    if (dfg.length > 0) {
+      Plotly.newPlot('dfg-chart', [{
+        type: 'bar',
+        x: dfg.map(e => e.count),
+        y: dfg.map(e => `${e.from} → ${e.to}`),
+        orientation: 'h',
+        marker: { color: '#7c6ffc' },
+      }], {
+        ...plotlyLayout,
+        margin: { t: 10, r: 50, b: 40, l: 220 },
+        xaxis: { title: 'Frequency', color: '#6b7280' },
+        yaxis: { color: '#6b7280', automargin: true },
+      });
+    }
+  } catch(e) { console.error(e); }
+}
+
+function downloadXES() {
+  window.location.href = BASE + '/api/export/xes' + qs();
+}
+
+function downloadBPMN() {
+  window.location.href = BASE + '/api/export/bpmn' + qs();
+}
+
+// Auto-refresh status every 10s; reload current tab every 30s
+setInterval(updateStatus, 10000);
+setInterval(() => refresh(), 30000);
+
+// Initial load
+updateStatus();
+loadFilters();
+loadDiscovery();
+</script>
+</body>
+</html>

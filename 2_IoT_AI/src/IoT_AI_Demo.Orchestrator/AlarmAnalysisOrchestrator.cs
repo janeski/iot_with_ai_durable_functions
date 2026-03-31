@@ -17,23 +17,25 @@ public static class AlarmAnalysisOrchestrator
         logger.LogInformation("Starting alarm analysis for {DeviceId} — {AlarmLevel}",
             input.Alarm.DeviceId, input.Alarm.AlarmLevel);
 
+        var orchId = context.InstanceId;
+
         // Step 1: Fetch recent telemetry for trend context
         var recentTelemetry = await context.CallActivityAsync<List<TelemetryMessage>>(
-            nameof(Activities.FetchRecentTelemetry), input.Alarm.DeviceId);
+            nameof(Activities.FetchRecentTelemetry), new DeviceActivityInput(orchId, input.Alarm.DeviceId));
 
         // Step 2: Fetch device / asset context
         var deviceContext = await context.CallActivityAsync<DeviceContext>(
-            nameof(Activities.FetchDeviceContext), input.Alarm.DeviceId);
+            nameof(Activities.FetchDeviceContext), new DeviceActivityInput(orchId, input.Alarm.DeviceId));
 
         // Step 3: RAG — search for similar past alarms
         var similarAlarms = await context.CallActivityAsync<List<SimilarAlarmResult>>(
-            nameof(Activities.SearchSimilarAlarms), input.Alarm);
+            nameof(Activities.SearchSimilarAlarms), new AlarmActivityInput(orchId, input.Alarm));
 
         logger.LogInformation("Found {Count} similar past alarms for {DeviceId}",
             similarAlarms.Count, input.Alarm.DeviceId);
 
         // Step 4: Call AI analysis (enriched with similar alarm context)
-        var aiInput = new AiAnalysisInput(input.Alarm, recentTelemetry, deviceContext, similarAlarms);
+        var aiInput = new AiAnalysisInput(orchId, input.Alarm, recentTelemetry, deviceContext, similarAlarms);
         var aiResult = await context.CallActivityAsync<AiAnalysisResult?>(
             nameof(Activities.CallAiAnalysis), aiInput);
 
@@ -44,7 +46,7 @@ public static class AlarmAnalysisOrchestrator
             : FallbackAnalysis(input.Alarm);
 
         // Step 6: Fan-out — trigger downstream actions in parallel (includes embedding storage)
-        var actionInput = new ActionInput(input.Alarm, analysis);
+        var actionInput = new ActionInput(orchId, input.Alarm, analysis);
         await Task.WhenAll(
             context.CallActivityAsync(nameof(Activities.UpdatePostgreSql), actionInput),
             context.CallActivityAsync(nameof(Activities.StoreAlarmEmbedding), actionInput),

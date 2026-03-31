@@ -51,9 +51,9 @@ var grafana = builder.AddContainer("grafana", "grafana/grafana", "latest")
     .WaitFor(postgresServer)
     .ExcludeFromManifest();
 
-var enableGrafanaTunnel = string.Equals(
+var enableGrafanaTunnel = !string.Equals(
     Environment.GetEnvironmentVariable("ENABLE_GRAFANA_TUNNEL"),
-    "true",
+    "false",
     StringComparison.OrdinalIgnoreCase);
 
 if (enableGrafanaTunnel)
@@ -63,12 +63,24 @@ if (enableGrafanaTunnel)
         .ExcludeFromManifest();
 }
 
+// Process Mining service — receives OTLP traces from all services and runs pm4py
+var processMiningContextPath = Path.Combine(builder.AppHostDirectory, "..", "IoT_AI_Demo.ProcessMining");
+var processMining = builder.AddDockerfile("process-mining", processMiningContextPath)
+    .WithEndpoint(targetPort: 8000, name: "http", scheme: "http")
+    .WithBindMount(Path.Combine(builder.AppHostDirectory, "process-mining-data"), "/data", isReadOnly: false)
+    .WithUrlForEndpoint("http", url => url.DisplayText = "Process Mining Dashboard")
+    .ExcludeFromManifest();
+
+var pmEndpoint = processMining.GetEndpoint("http");
+
 // Services
 builder.AddProject<Projects.IoT_AI_Demo_TelemetryFunction>("telemetry-function")
     .WithReference(telemetrydb)
     .WithReference(serviceBus)
     .WithEnvironment("Mqtt__Host", mqttEndpoint.Property(EndpointProperty.Host))
     .WithEnvironment("Mqtt__Port", mqttEndpoint.Property(EndpointProperty.Port))
+    .WithEnvironment("PROCESS_MINING_OTLP_ENDPOINT",
+        ReferenceExpression.Create($"http://{pmEndpoint.Property(EndpointProperty.Host)}:{pmEndpoint.Property(EndpointProperty.Port)}"))
     .WaitFor(telemetrydb)
     .WaitFor(mqtt)
     .WaitFor(serviceBus);
@@ -76,6 +88,8 @@ builder.AddProject<Projects.IoT_AI_Demo_TelemetryFunction>("telemetry-function")
 builder.AddProject<Projects.IoT_AI_Demo_AlarmFunction>("alarm-function")
     .WithReference(serviceBus)
     .WithReference(telemetrydb)
+    .WithEnvironment("PROCESS_MINING_OTLP_ENDPOINT",
+        ReferenceExpression.Create($"http://{pmEndpoint.Property(EndpointProperty.Host)}:{pmEndpoint.Property(EndpointProperty.Port)}"))
     .WaitFor(serviceBus)
     .WaitFor(telemetrydb);
 
@@ -99,9 +113,12 @@ builder.AddAzureFunctionsProject<Projects.IoT_AI_Demo_Orchestrator>("orchestrato
     .WithEnvironment("AzureOpenAI__Endpoint", "https://dotnet-mvp-meetup.openai.azure.com/")
     .WithEnvironment("AzureOpenAI__Deployment", "gpt-4.1")
     .WithEnvironment("AzureOpenAI__EmbeddingDeployment", "text-embedding-3-small")
+    .WithEnvironment("PROCESS_MINING_OTLP_ENDPOINT",
+        ReferenceExpression.Create($"http://{pmEndpoint.Property(EndpointProperty.Host)}:{pmEndpoint.Property(EndpointProperty.Port)}"))
     .WaitFor(serviceBus)
     .WaitFor(telemetrydb)
     .WaitFor(storage)
-    .WaitFor(dtsEmulator);
+    .WaitFor(dtsEmulator)
+    .WaitFor(processMining);
 
 builder.Build().Run();

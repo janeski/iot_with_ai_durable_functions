@@ -419,3 +419,9 @@ FodyWeavers.xsd
 1_IoT/docs/*
 2_IoT_AI/docs/*
 .gitignore
+.claude/settings.local.json
+
+# Process mining runtime data
+**/process-mining-data/
+Articles/
+Draft/

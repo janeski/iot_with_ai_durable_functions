@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using IoT_AI_Demo.Shared;
 using Microsoft.Azure.Functions.Worker;
@@ -8,6 +9,7 @@ namespace IoT_AI_Demo.Orchestrator;
 
 public sealed class AlarmAnalysisTrigger(ILogger<AlarmAnalysisTrigger> logger)
 {
+    private static readonly ActivitySource Source = new("IoT_AI_Demo.Orchestrator");
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     [Function(nameof(StartAlarmAnalysis))]
@@ -27,5 +29,11 @@ public sealed class AlarmAnalysisTrigger(ILogger<AlarmAnalysisTrigger> logger)
 
         logger.LogInformation("Started alarm analysis orchestration {InstanceId} for {DeviceId}",
             instanceId, input.Alarm.DeviceId);
+
+        using var span = Source.StartActivity("AlarmReceived");
+        span?.SetTag("orchestration.instance_id", instanceId);
+        span?.SetTag("device.id", input.Alarm.DeviceId);
+        span?.SetTag("alarm.level", input.Alarm.AlarmLevel.ToString());
+        span?.SetTag("alarm.value", input.Alarm.Value);
     }
 }

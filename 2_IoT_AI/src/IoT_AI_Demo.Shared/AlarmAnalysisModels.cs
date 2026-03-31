@@ -13,8 +13,12 @@ public record DeviceContext(
     string? Location,
     string? AssetGroup);
 
+/// <summary>Wraps a device ID with the orchestration instance ID for process event tracing.</summary>
+public record DeviceActivityInput(string OrchestrationId, string DeviceId);
+
 /// <summary>Combined input for the AI analysis activity.</summary>
 public record AiAnalysisInput(
+    string OrchestrationId,
     AlarmMessage Alarm,
     List<TelemetryMessage> RecentTelemetry,
     DeviceContext DeviceContext,
@@ -36,8 +40,11 @@ public record AiAnalysisResult(
     string[] RecommendedActions,
     string Summary);
 
+/// <summary>Wraps an alarm with the orchestration instance ID for similarity search tracing.</summary>
+public record AlarmActivityInput(string OrchestrationId, AlarmMessage Alarm);
+
 /// <summary>Input to downstream action activities.</summary>
-public record ActionInput(AlarmMessage Alarm, AiAnalysisResult Analysis);
+public record ActionInput(string OrchestrationId, AlarmMessage Alarm, AiAnalysisResult Analysis);
 
 /// <summary>Final output of the alarm analysis orchestration.</summary>
 public record AlarmAnalysisOutput(
