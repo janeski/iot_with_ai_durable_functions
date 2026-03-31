@@ -144,6 +144,7 @@ public sealed class Activities(
         [ActivityTrigger] AiAnalysisResult result)
     {
         using var span = Source.StartActivity("ValidateResult");
+        span?.SetTag("orchestration.instance_id", result.OrchestrationId);
         var validSeverities = new[] { "CRITICAL", "WARNING", "INFO" };
 
         if (string.IsNullOrWhiteSpace(result.RootCause) ||
